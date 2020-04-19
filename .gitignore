@@ -1,2 +1,7 @@
 # Model Checkpoints
 /*.pth
+
+# Sandbox File
+SSDLite.ipynb
+.ipynb_checkpoints/
+__pycache__/

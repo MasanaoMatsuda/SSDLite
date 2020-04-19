@@ -23,9 +23,10 @@ class Residual(InvertedResidual):
     
     
 class SSDLite(nn.Module):
-    def __init__(self, width_mult=1.0):
+    def __init__(self, num_label=21, width_mult=1.0):
         super().__init__()
         
+        # Feature Extraction
         backbone = MobileNetV2()
         self.feature_extractor0 = nn.Sequential(*backbone.feature_extractor[:14], 
                                                 *backbone.feature_extractor[14].conv[:3])
@@ -39,16 +40,17 @@ class SSDLite(nn.Module):
             Residual(256, 64, stride=2, expand_ratio=0.25)
         ])
         
-        self.num_label = 21
+        # Predict class label and box position
+        self.num_label = num_label
         num_defaults = [6] * 6
         backbone.out_channels[0] = round(backbone.out_channels[0] * width_mult)
         self.loc = []
         self.conf = []
         for nd, oc in zip(num_defaults[:-1], backbone.out_channels[:-1]):
             self.loc.append(build_SSeparableConv2d(oc, nd*4, kernel=3, padding=1))
-            self.conf.append(build_SSeparableConv2d(oc, nd*self.num_label, kernel=3, padding=1))
+            self.conf.append(build_SSeparableConv2d(oc, nd*num_label, kernel=3, padding=1))
         self.loc.append(nn.Conv2d(backbone.out_channels[-1], num_defaults[-1]*4, kernel_size=1))
-        self.conf.append(nn.Conv2d(backbone.out_channels[-1], num_defaults[-1]*self.num_label, kernel_size=1))
+        self.conf.append(nn.Conv2d(backbone.out_channels[-1], num_defaults[-1]*num_label, kernel_size=1))
         self.conf = nn.ModuleList(self.conf)
         self.loc = nn.ModuleList(self.loc)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -79,13 +81,13 @@ class SSDLite(nn.Module):
         
         x = self.feature_extractor(x)
         detection_feed = [x]
-        for l in self.additional_blocks:
-            x = l(x)
+        for layer in self.additional_blocks:
+            x = layer(x)
             detection_feed.append(x)
             
-        locs, confs = self.bbox_view(detection_feed, self.loc, self.conf)
-        return locs, confs
+        return self.bbox_view(detection_feed)
     
+
     def load(self, state_dict):
         self.load_state_dict(
             torch.load(state_dict, map_location=lambda storage, loc: storage)
